@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Location App</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+
+        #place {
+            width: 100%;
+            max-width: 400px;
+            height: 40px;
+            font-size: 16px;
+        }
+
+        .pac-container {
+            font-size: 16px;
+            width: 300px !important;
+        }
+
+        .pac-item {
+            padding: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>場所を選択</h2>
+    <label>日時を設定</label>
+    <input type="datetime-local" id="datetime">
+    <button onclick="saveDateTime()">設定</button>
+    <input type="text" id="place" placeholder="場所を検索">
+
+    <p id="money">罰金合計: 0円</p>
+    <div id="map"></div>
+
+    <button onclick="checkLocation()">到着ボタン</button>
+    <p id="status"></p>
+
+    <p id="result">ここに座標が表示される</p>
+
+    <script>
+        let map;
+        let marker;
+        let selectedLat = null;
+        let selectedLng = null;
+        let targetDateTime = null;
+        let penalty = 300;
+
+        function initMap() {
+            const tokyo = { lat: 35.6804, lng: 139.7690 };
+
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 14,
+                center: tokyo,
+            });
+
+            const input = document.getElementById("place");
+
+            const autocomplete = new google.maps.places.Autocomplete(input);
+
+            autocomplete.bindTo("bounds", map);
+
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+
+                if (!place.geometry) {
+                    alert("場所が見つかりません");
+                    return;
+                }
+
+                const location = place.geometry.location;
+
+                selectedLat = location.lat();
+                selectedLng = location.lng();
+
+                map.setCenter(location);
+                map.setZoom(16);
+
+                if (marker) {
+                    marker.setMap(null);
+                }
+
+                marker = new google.maps.Marker({
+                    position: location,
+                    map: map,
+                });
+
+                document.getElementById("result").innerText =
+                    "選択: " + place.name;
+            });
+
+            map.addListener("click", (e) => {
+                selectedLat = e.latLng.lat();
+                selectedLng = e.latLng.lng();
+
+                document.getElementById("result").innerText =
+                    "緯度: " + selectedLat + " / 経度: " + selectedLng;
+
+                localStorage.setItem("lat", selectedLat);
+                localStorage.setItem("lng", selectedLng);
+
+                if (marker) {
+                    marker.setMap(null);
+                }
+
+                marker = new google.maps.Marker({
+                    position: { lat: selectedLat, lng: selectedLng },
+                    map: map,
+                });
+            });
+
+            const lat = localStorage.getItem("lat");
+            const lng = localStorage.getItem("lng");
+            const savedTime = localStorage.getItem("startTime");
+
+            if (lat && lng) {
+                selectedLat = parseFloat(lat);
+                selectedLng = parseFloat(lng);
+
+                marker = new google.maps.Marker({
+                    position: { lat: selectedLat, lng: selectedLng },
+                    map: map,
+                });
+            }
+
+            if (savedTime) {
+                startTime = new Date(savedTime);
+            }
+
+            const savedDateTime = localStorage.getItem("targetDateTime");
+
+            if (savedDateTime) {
+                targetDateTime = new Date(savedDateTime);
+            }
+
+            const savedMoney = localStorage.getItem("money");
+
+            if (savedMoney) {
+                document.getElementById("money").innerText =
+                    "罰金合計: " + savedMoney + "円";
+            }
+
+        }
+
+        function saveDateTime() {
+            const input = document.getElementById("datetime").value;
+
+            if (!input) {
+                alert("日時を入力してください");
+                return;
+            }
+
+            targetDateTime = new Date(input);
+
+            localDateTime = new Date(input);
+            localStorage.setItem("targetDateTime", targetDateTime);
+
+            document.getElementById("status").innerText =
+                "設定完了：" + targetDateTime;
+
+            localStorage.removeItem("completed");
+            localStorage.removeItem("penalized");
+
+        }
+
+        function searchPlace() {
+            const keyword = document.getElementById("place").value;
+
+            if (!keyword) {
+                alert("場所を入力してください");
+                return;
+            }
+
+            const service = new google.maps.places.PlacesService(map);
+
+            const request = {
+                query: keyword,
+                fields: ["name", "geometry"],
+            };
+
+            service.findPlaceFromQuery(request, (results, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK) {
+                    const place = results[0];
+
+                    selectedLat = place.geometry.location.lat();
+                    selectedLng = place.geometry.location.lng();
+
+                    map.setCenter(place.geometry.location);
+
+                    if (marker) {
+                        marker.setMap(null);
+                    }
+
+                    marker = new google.maps.Marker({
+                        position: place.geometry.location,
+                        map: map,
+                    });
+
+                    document.getElementById("result").innerText =
+                        "選択: " + place.name;
+                } else {
+                    alert("場所が見つかりません");
+                }
+            });
+        }
+
+        function getDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) *
+                Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
+        }
+
+        function checkLocation() {
+
+            if (!targetDateTime) {
+                alert("先に日時を設定してください");
+                return;
+            }
+
+            if (selectedLat === null) {
+                alert("先に場所を選択してください");
+                return;
+            }
+
+            const now = new Date();
+
+            const deadline = new Date(targetDateTime.getTime() + 10 * 60 * 1000);
+
+            if (now > deadline) {
+                document.getElementById("status").innerText = "時間切れ（罰金）";
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition((position) => {
+                const currentLat = position.coords.latitude;
+                const currentLng = position.coords.longitude;
+
+                const distance = getDistance(
+                    currentLat,
+                    currentLng,
+                    selectedLat,
+                    selectedLng
+                );
+
+                if (distance <= 100) {
+                    document.getElementById("status").innerText = "到着成功！";
+                    localStorage.setItem("completed", "true");
+                } else {
+                    document.getElementById("status").innerText =
+                        "範囲外（" + Math.floor(distance) + "m）";
+                }
+            });
+        }
+
+        function applyPenalty() {
+            // すでに達成 or すでに罰金済みなら何もしない
+            if (localStorage.getItem("completed") === "true") return;
+            if (localStorage.getItem("penalized") === "true") return;
+
+            let currentMoney = parseInt(localStorage.getItem("money") || "0");
+            currentMoney += penalty;
+
+            localStorage.setItem("money", currentMoney);
+            localStorage.setItem("penalized", "true");
+
+            document.getElementById("status").innerText =
+                "時間切れ（罰金 +" + penalty + "円）";
+            document.getElementById("money").innerText =
+                "罰金合計: " + currentMoney + "円";
+        }
+
+        function autoCheckDeadline() {
+            if (!targetDateTime) return;
+
+            const now = new Date();
+            const deadline = targetDateTime;
+
+            if (now > deadline) {
+                applyPenalty();
+            }
+        }
+
+        // 1秒ごとに監視
+        setInterval(autoCheckDeadline, 1000);
+
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("sw.js")
+                .then(() => console.log("SW登録成功"))
+                .catch(err => console.log("SW登録失敗", err));
+        }
+
+    </script>
+
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAo6QO92osLVlVVf3wac459XGYtsozjQ6U&libraries=places&callback=initMap"
+        async defer></script>
+
+</body>
+
+</html>
