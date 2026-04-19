@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>Location App</title>
+    <title>Motivator</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <style>
@@ -16,7 +16,7 @@
         }
 
         #map {
-            height: 500px;
+            height: 300px;
             width: 100%;
             margin-top: 10px;
             border-radius: 10px;
@@ -48,7 +48,7 @@
 
         .pac-container {
             font-size: 16px;
-            width: 300px !important;
+            width: 100% !important;
         }
 
         .pac-item {
@@ -65,10 +65,12 @@
             border-radius: 10px;
             background: #007bff;
             color: white;
+            transition: 0.1s;
         }
 
         button:active {
             opacity: 0.8;
+            transform: scale(0.97);
         }
 
         .arrive-btn {
@@ -86,16 +88,17 @@
         <input type="text" id="place" placeholder="場所を検索">
         <label>日時を設定</label>
         <input type="datetime-local" id="datetime">
-        <button onclick="saveDateTime()">設定</button>
-
+        <button onclick="saveTask()">タスク追加</button>
         <p id="money">罰金合計: 0円</p>
     </div>
     <div id="map"></div>
 
-    <button class="arrive-btn" onclick="checkLocation()">到着ボタン</button>
     <p id="status"></p>
 
+    <div id="taskList"></div>
     <p id="result">ここに座標が表示される</p>
+    <h3>履歴</h3>
+    <div id="historyList"></div>
 
     <script>
         let map;
@@ -104,6 +107,8 @@
         let selectedLng = null;
         let targetDateTime = null;
         let penalty = 300;
+        let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
+        let history = JSON.parse(localStorage.getItem("history") || "[]");
 
         function initMap() {
             const tokyo = { lat: 35.6804, lng: 139.7690 };
@@ -182,10 +187,6 @@
                 });
             }
 
-            if (savedTime) {
-                startTime = new Date(savedTime);
-            }
-
             const savedDateTime = localStorage.getItem("targetDateTime");
 
             if (savedDateTime) {
@@ -201,25 +202,30 @@
 
         }
 
-        function saveDateTime() {
-            const input = document.getElementById("datetime").value;
+        function saveTask() {
+            const placeName = document.getElementById("place").value;
+            const datetimeInput = document.getElementById("datetime").value;
 
-            if (!input) {
-                alert("日時を入力してください");
+            if (!placeName || !datetimeInput || selectedLat === null || selectedLng === null) {
+                alert("場所と日時をちゃんと設定して");
                 return;
             }
 
-            targetDateTime = new Date(input);
+            const task = {
+                placeName: placeName,
+                lat: selectedLat,
+                lng: selectedLng,
+                targetDateTime: new Date(datetimeInput).toISOString(),
+                completed: false,
+                penalized: false
+            };
 
-            localDateTime = new Date(input);
-            localStorage.setItem("targetDateTime", targetDateTime);
+            tasks.push(task);
 
-            document.getElementById("status").innerText =
-                "設定完了：" + targetDateTime;
+            localStorage.setItem("tasks", JSON.stringify(tasks));
 
-            localStorage.removeItem("completed");
-            localStorage.removeItem("penalized");
-
+            alert("タスク追加完了");
+            renderTasks();
         }
 
         function searchPlace() {
@@ -279,84 +285,232 @@
             return R * c;
         }
 
-        function checkLocation() {
+        // function checkLocation() {
 
-            if (!targetDateTime) {
-                alert("先に日時を設定してください");
-                return;
-            }
+        //     if (!targetDateTime) {
+        //         alert("先に日時を設定してください");
+        //         return;
+        //     }
 
-            if (selectedLat === null) {
-                alert("先に場所を選択してください");
+        //     if (selectedLat === null) {
+        //         alert("先に場所を選択してください");
+        //         return;
+        //     }
+
+        //     const now = new Date();
+
+        //     const deadline = new Date(targetDateTime.getTime() + 10 * 60 * 1000);
+
+        //     if (now > deadline) {
+        //         document.getElementById("status").innerText = "時間切れ（罰金）";
+        //         return;
+        //     }
+
+        //     navigator.geolocation.getCurrentPosition((position) => {
+        //         const currentLat = position.coords.latitude;
+        //         const currentLng = position.coords.longitude;
+
+        //         const distance = getDistance(
+        //             currentLat,
+        //             currentLng,
+        //             selectedLat,
+        //             selectedLng
+        //         );
+
+        //         if (distance <= 100) {
+        //             document.getElementById("status").innerText = "到着成功！";
+        //             localStorage.setItem("completed", "true");
+        //         } else {
+        //             document.getElementById("status").innerText =
+        //                 "範囲外（" + Math.floor(distance) + "m）";
+        //         }
+        //     },
+        //         () => {
+        //             alert("位置情報が取得できません");
+        //         }
+        //     );
+        // }
+
+        function checkTask(index) {
+            const task = tasks[index];
+
+            if (task.completed) {
+                alert("すでに到着済み");
                 return;
             }
 
             const now = new Date();
-
-            const deadline = new Date(targetDateTime.getTime() + 10 * 60 * 1000);
+            const deadline = new Date(new Date(task.targetDateTime).getTime() + 10 * 60 * 1000);
 
             if (now > deadline) {
-                document.getElementById("status").innerText = "時間切れ（罰金）";
+                applyPenalty(task);
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition((position) => {
-                const currentLat = position.coords.latitude;
-                const currentLng = position.coords.longitude;
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const distance = getDistance(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        task.lat,
+                        task.lng
+                    );
 
-                const distance = getDistance(
-                    currentLat,
-                    currentLng,
-                    selectedLat,
-                    selectedLng
-                );
+                    if (distance <= 150) {
+                        task.completed = true;
 
-                if (distance <= 100) {
-                    document.getElementById("status").innerText = "到着成功！";
-                    localStorage.setItem("completed", "true");
-                } else {
-                    document.getElementById("status").innerText =
-                        "範囲外（" + Math.floor(distance) + "m）";
+                        // 👇 historyへ移動
+                        history.push(task);
+
+                        // 👇 tasksから削除
+                        tasks.splice(index, 1);
+
+                        localStorage.setItem("tasks", JSON.stringify(tasks));
+                        localStorage.setItem("history", JSON.stringify(history));
+
+                        alert("到着成功！");
+                    } else {
+                        alert("範囲外：" + Math.floor(distance) + "m");
+                    }
+
+                    localStorage.setItem("tasks", JSON.stringify(tasks));
+                    renderTasks();
+                },
+                () => {
+                    alert("位置情報が取得できません");
                 }
-            });
+            );
         }
 
-        function applyPenalty() {
-            // すでに達成 or すでに罰金済みなら何もしない
-            if (localStorage.getItem("completed") === "true") return;
-            if (localStorage.getItem("penalized") === "true") return;
+        function autoCheckTasks() {
+            const now = new Date();
+
+            tasks.forEach((task, index) => {
+
+                // すでに完了 or 罰金済みならスキップ
+                if (task.completed || task.penalized) return;
+
+                const deadline = new Date(new Date(task.targetDateTime).getTime() + 10 * 60 * 1000);
+
+                if (now > deadline) {
+                    applyPenalty(task, index);
+                }
+            });
+
+            cleanTasks();
+        }
+
+        function applyPenalty(task, index) {
+            if (task.completed || task.penalized) return;
 
             let currentMoney = parseInt(localStorage.getItem("money") || "0");
             currentMoney += penalty;
 
+            task.penalized = true;
+
+            // 👇 historyへ
+            history.push(task);
+
+            // 👇 tasksから削除
+            tasks.splice(index, 1);
+
             localStorage.setItem("money", currentMoney);
-            localStorage.setItem("penalized", "true");
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+            localStorage.setItem("history", JSON.stringify(history));
 
-            document.getElementById("status").innerText =
-                "時間切れ（罰金 +" + penalty + "円）";
-            document.getElementById("money").innerText =
-                "罰金合計: " + currentMoney + "円";
+            alert("罰金 +" + penalty + "円");
+
+            renderTasks();
+            renderHistory();
         }
 
-        function autoCheckDeadline() {
-            if (!targetDateTime) return;
+        // function autoCheckDeadline() {
+        //     if (!targetDateTime) return;
 
-            const now = new Date();
-            const deadline = targetDateTime;
+        //     const now = new Date();
+        //     const deadline = new Date(targetDateTime.getTime() + 10 * 60 * 1000);
 
-            if (now > deadline) {
-                applyPenalty();
-            }
-        }
+        //     if (now > deadline) {
+        //         applyPenalty();
+        //     }
+        // }
 
         // 1秒ごとに監視
-        setInterval(autoCheckDeadline, 1000);
+        setInterval(autoCheckTasks, 1000);
 
         if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("sw.js")
                 .then(() => console.log("SW登録成功"))
                 .catch(err => console.log("SW登録失敗", err));
         }
+
+        function renderTasks() {
+            const list = document.getElementById("taskList");
+            list.innerHTML = "";
+
+            tasks.forEach((task, index) => {
+                const div = document.createElement("div");
+
+                div.style.background = "white";
+                div.style.padding = "10px";
+                div.style.marginTop = "10px";
+                div.style.borderRadius = "10px";
+
+                let statusText = "";
+
+                if (task.completed) {
+                    statusText = "✅ 完了";
+                } else if (task.penalized) {
+                    statusText = "❌ 罰金";
+                } else {
+                    statusText = "⌛ 未完了";
+                }
+
+                div.innerHTML = `
+            <p>📍 ${task.placeName}</p>
+            <p>⏰ ${new Date(task.targetDateTime).toLocaleString()}</p>
+            <button onclick="checkTask(${index})">到着チェック</button>
+        `;
+
+                list.appendChild(div);
+            });
+        }
+
+        function renderHistory() {
+            const list = document.getElementById("historyList");
+            list.innerHTML = "";
+
+            history.forEach((task) => {
+                const div = document.createElement("div");
+
+                let statusText = task.completed ? "✅ 完了" : "❌ 罰金";
+
+                div.style.background = "#eee";
+                div.style.padding = "10px";
+                div.style.marginTop = "10px";
+                div.style.borderRadius = "10px";
+
+                div.innerHTML = `
+            <p>📍 ${task.placeName}</p>
+            <p>${statusText}</p>
+        `;
+
+                list.appendChild(div);
+            });
+        }
+
+        function cleanTasks() {
+            tasks = tasks.filter(task => {
+                // 未完了 & 未罰金だけ残す
+                return !task.completed && !task.penalized;
+            });
+
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+            renderTasks();
+        }
+
+        renderTasks();
+        renderHistory();
 
     </script>
 
