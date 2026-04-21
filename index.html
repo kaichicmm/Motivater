@@ -359,6 +359,9 @@
                     if (distance <= 150) {
                         task.completed = true;
 
+                        // 👇 追加（今の時刻を保存）
+                        task.completedAt = new Date().toISOString();
+
                         // 👇 historyへ移動
                         history.push(task);
 
@@ -407,6 +410,8 @@
             currentMoney += penalty;
 
             task.penalized = true;
+
+            task.penalizedAt = new Date().toISOString();
 
             // 👇 historyへ
             history.push(task);
@@ -483,7 +488,16 @@
             history.forEach((task) => {
                 const div = document.createElement("div");
 
-                let statusText = task.completed ? "✅ 完了" : "❌ 罰金";
+                let statusText = "";
+                let timeText = "";
+
+                if (task.completed) {
+                    statusText = "✅ 完了";
+                    timeText = new Date(task.completedAt).toLocaleString();
+                } else if (task.penalized) {
+                    statusText = "❌ 罰金";
+                    timeText = new Date(task.penalizedAt).toLocaleString();
+                }
 
                 div.style.background = "#eee";
                 div.style.padding = "10px";
@@ -493,6 +507,7 @@
                 div.innerHTML = `
             <p>📍 ${task.placeName}</p>
             <p>${statusText}</p>
+            <p>🕒 ${timeText}</P>
         `;
 
                 list.appendChild(div);
