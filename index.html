@@ -78,6 +78,69 @@
             font-size: 20px;
             font-weight: bold;
         }
+
+        .task-card {
+            background: white;
+            border-radius: 14px;
+            padding: 16px;
+            margin-top: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .task-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .task-status {
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .success {
+            color: #16a34a;
+        }
+
+        .penalty {
+            color: #dc2626;
+        }
+
+        .pending {
+            color: #f59e0b;
+        }
+
+        .arrive-btn {
+            background: #16a34a;
+            font-size: 18px;
+        }
+
+        .history-card {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 14px;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        .section-title {
+            margin-top: 24px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        #money {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 100;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
     </style>
 </head>
 
@@ -89,15 +152,24 @@
         <label>日時を設定</label>
         <input type="datetime-local" id="datetime">
         <button onclick="saveTask()">タスク追加</button>
-        <p id="money">罰金合計: 0円</p>
+        <p id="unpaid">未払い: 0円</p>
+        <button onclick="payPenalty()">
+            支払い済みにする
+        </button>
     </div>
     <div id="map"></div>
 
+    <button onclick="moveToCurrentLocation()">
+        現在地に移動
+    </button>
+
     <p id="status"></p>
 
+    <h3 class="section-title">タスク一覧</h3>
     <div id="taskList"></div>
-    <p id="result">ここに座標が表示される</p>
-    <h3>履歴</h3>
+    <p id="result"></p>
+
+    <h3 class="section-title">履歴</h3>
     <div id="historyList"></div>
 
     <script>
@@ -109,6 +181,8 @@
         let penalty = 300;
         let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
         let history = JSON.parse(localStorage.getItem("history") || "[]");
+        let currentMarker;
+        let currentCircle;
 
         function initMap() {
             const tokyo = { lat: 35.6804, lng: 139.7690 };
@@ -200,9 +274,38 @@
                     "罰金合計: " + savedMoney + "円";
             }
 
+            const unpaidAmount = localStorage.getItem("unpaidAmount") || "0";
+
+            document.getElementById("unpaid").innerText =
+                "未払い：" + unpaidAmount + "円";
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    showCurrentLocation(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        position.coords.accuracy
+                    );
+                },
+                () => {
+                    console.log("現在地取得できません");
+                }
+            );
         }
 
         function saveTask() {
+
+            const unpaidAmount = parseInt(
+                localStorage.getItem("unpaidAmount") || "0"
+            );
+
+            if (unpaidAmount > 0) {
+
+                alert("未払い罰金を払ってください");
+
+                return;
+            }
+
             const placeName = document.getElementById("place").value;
             const datetimeInput = document.getElementById("datetime").value;
 
@@ -220,12 +323,14 @@
                 penalized: false
             };
 
-            tasks.push(task);
-
-            localStorage.setItem("tasks", JSON.stringify(tasks));
-
-            alert("タスク追加完了");
-            renderTasks();
+            addDoc(collection(db, "tasks"), task)
+                .then(() => {
+                    alert("Firestore保存成功");
+                })
+                .catch((error) => {
+                    cosole.error(error);
+                    alert("Firestore保存失敗");
+                });
         }
 
         function searchPlace() {
@@ -283,6 +388,58 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
             return R * c;
+        }
+
+        function showCurrentLocation(lat, lng, accuracy = 50) {
+            const currentLocation = { lat, lng };
+
+            map.setCenter(currentLocation);
+            map.setZoom(16);
+
+            // 既存削除
+            if (currentMarker) currentMarker.setMap(null);
+            if (currentCircle) currentCircle.setMap(null);
+
+            // 青い点
+            currentMarker = new google.maps.Marker({
+                position: currentLocation,
+                map: map,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: "#4285F4",
+                    fillOpacity: 1,
+                    strokeColor: "white",
+                    strokeWeight: 2,
+                }
+            });
+
+            // 外側の円
+            currentCircle = new google.maps.Circle({
+                strokeColor: "#4285F4",
+                strokeOpacity: 0.3,
+                strokeWeight: 1,
+                fillColor: "#4285F4",
+                fillOpacity: 0.2,
+                map: map,
+                center: currentLocation,
+                radius: accuracy
+            });
+        }
+
+        function moveToCurrentLocation() {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    showCurrentLocation(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        position.coords.accuracy
+                    );
+                },
+                () => {
+                    alert("位置情報が取得できません");
+                }
+            );
         }
 
         // function checkLocation() {
@@ -399,8 +556,6 @@
                     applyPenalty(task, index);
                 }
             });
-
-            cleanTasks();
         }
 
         function applyPenalty(task, index) {
@@ -408,6 +563,13 @@
 
             let currentMoney = parseInt(localStorage.getItem("money") || "0");
             currentMoney += penalty;
+
+            let unpaidAmount = parseInt(
+                localStorage.getItem("unpaidAmount") || "0"
+            );
+
+            unpaidAmount += penalty;
+            localStorage.setItem("unpaidAmount", unpaidAmount);
 
             task.penalized = true;
 
@@ -427,6 +589,9 @@
 
             renderTasks();
             renderHistory();
+
+            document.getElementById("unpaid").innerText =
+                "未払い：" + unpaidAmount + "円";
         }
 
         // function autoCheckDeadline() {
@@ -449,32 +614,80 @@
                 .catch(err => console.log("SW登録失敗", err));
         }
 
+        async function loadTasks() {
+
+            const querySnapshot = await getDocs(collection(db, "tasks"));
+
+            tasks = [];
+
+            querySnapshot.forEach((doc) => {
+
+                const taskData = doc.data();
+
+                taskData.id = doc.id;
+
+                tasks.push(taskData);
+            });
+
+            renderTasks();
+        }
+
         function renderTasks() {
             const list = document.getElementById("taskList");
             list.innerHTML = "";
 
             tasks.forEach((task, index) => {
-                const div = document.createElement("div");
 
-                div.style.background = "white";
-                div.style.padding = "10px";
-                div.style.marginTop = "10px";
-                div.style.borderRadius = "10px";
+                const div = document.createElement("div");
+                div.className = "task-card";
 
                 let statusText = "";
+                let statusClass = "";
 
                 if (task.completed) {
                     statusText = "✅ 完了";
+                    statusClass = "success";
                 } else if (task.penalized) {
                     statusText = "❌ 罰金";
+                    statusClass = "penalty";
                 } else {
                     statusText = "⌛ 未完了";
+                    statusClass = "pending";
+                }
+
+                const deadline = new Date(task.targetDateTime);
+                const now = new Date();
+
+                const remainMs = deadline - now;
+
+                let remainText = "";
+
+                if (remainMs > 0) {
+                    const minutes = Math.floor(remainMs / 1000 / 60);
+                    remainText = `あと${minutes}分`;
+                } else {
+                    remainText = "締切超過";
                 }
 
                 div.innerHTML = `
-            <p>📍 ${task.placeName}</p>
+            <div class="task-title">
+                📍 ${task.placeName}
+            </div>
+
             <p>⏰ ${new Date(task.targetDateTime).toLocaleString()}</p>
-            <button onclick="checkTask(${index})">到着チェック</button>
+
+            <p>💰 ${penalty}円</p>
+
+            <p>${remainText}</p>
+
+            <p class="task-status ${statusClass}">
+                ${statusText}
+            </p>
+
+            <button class="arrive-btn"
+                onclick="checkTask(${index})">
+                到着チェック
+            </button>
         `;
 
                 list.appendChild(div);
@@ -482,11 +695,16 @@
         }
 
         function renderHistory() {
+
             const list = document.getElementById("historyList");
+
             list.innerHTML = "";
 
-            history.forEach((task) => {
+            history.slice().reverse().forEach((task) => {
+
                 const div = document.createElement("div");
+
+                div.className = "history-card";
 
                 let statusText = "";
                 let timeText = "";
@@ -499,15 +717,14 @@
                     timeText = new Date(task.penalizedAt).toLocaleString();
                 }
 
-                div.style.background = "#eee";
-                div.style.padding = "10px";
-                div.style.marginTop = "10px";
-                div.style.borderRadius = "10px";
-
                 div.innerHTML = `
-            <p>📍 ${task.placeName}</p>
+            <div class="task-title">
+                📍 ${task.placeName}
+            </div>
+
             <p>${statusText}</p>
-            <p>🕒 ${timeText}</P>
+
+            <p>🕒 ${timeText}</p>
         `;
 
                 list.appendChild(div);
@@ -524,8 +741,49 @@
             renderTasks();
         }
 
-        renderTasks();
+        loadTasks();
         renderHistory();
+
+        function payPenalty() {
+            localStorage.setItem("unpaidAmount", 0);
+
+            document.getElementById("unpaid").innerText =
+                "未払い： 0円";
+
+            alert("支払い完了");
+        }
+
+    </script>
+
+    <script type="module">
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+
+        import {
+            getFirestore,
+            collection,
+            addDoc,
+            getDocs
+        } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDTq3QuX9fP5UBr7eUz8AzJvwJLmIACve0",
+            authDomain: "motivator-app-d8926.firebaseapp.com",
+            projectId: "motivator-app-d8926",
+            storageBucket: "motivator-app-d8926.firebasestorage.app",
+            messagingSenderId: "139246601800",
+            appId: "1:139246601800:web:53517f227652513cb47a7d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        console.log("Firebase接続成功");
+
+        window.db = db;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
 
     </script>
 
