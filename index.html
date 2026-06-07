@@ -267,13 +267,6 @@
                 targetDateTime = new Date(savedDateTime);
             }
 
-            const savedMoney = localStorage.getItem("money");
-
-            if (savedMoney) {
-                document.getElementById("money").innerText =
-                    "罰金合計: " + savedMoney + "円";
-            }
-
             const unpaidAmount = localStorage.getItem("unpaidAmount") || "0";
 
             document.getElementById("unpaid").innerText =
@@ -323,12 +316,12 @@
                 penalized: false
             };
 
-            addDoc(collection(db, "tasks"), task)
+            window.addDoc(window.collection(window.db, "tasks"), task)
                 .then(() => {
                     alert("Firestore保存成功");
                 })
                 .catch((error) => {
-                    cosole.error(error);
+                    console.error(error);
                     alert("Firestore保存失敗");
                 });
         }
@@ -741,9 +734,6 @@
             renderTasks();
         }
 
-        loadTasks();
-        renderHistory();
-
         function payPenalty() {
             localStorage.setItem("unpaidAmount", 0);
 
@@ -785,11 +775,14 @@
         window.addDoc = addDoc;
         window.getDocs = getDocs;
 
+        loadTasks();
+        renderHistory();
     </script>
 
     <script
         src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAo6QO92osLVlVVf3wac459XGYtsozjQ6U&libraries=places&callback=initMap"
-        async defer></script>
+        async defer>
+        </script>
 
 </body>
 
