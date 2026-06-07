@@ -481,7 +481,7 @@
         //     );
         // }
 
-        function checkTask(index) {
+        async function checkTask(index) {
             const task = tasks[index];
 
             if (task.completed) {
@@ -498,7 +498,7 @@
             }
 
             navigator.geolocation.getCurrentPosition(
-                (position) => {
+                async (position) => {
                     const distance = getDistance(
                         position.coords.latitude,
                         position.coords.longitude,
@@ -507,6 +507,10 @@
                     );
 
                     if (distance <= 150) {
+
+                        await window.deleteDoc(
+                            window.doc(window.db, "tasks", task.id)
+                        );
                         task.completed = true;
 
                         // 👇 追加（今の時刻を保存）
@@ -753,7 +757,9 @@
             getFirestore,
             collection,
             addDoc,
-            getDocs
+            getDocs,
+            deleteDoc,
+            doc
         } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -774,6 +780,8 @@
         window.collection = collection;
         window.addDoc = addDoc;
         window.getDocs = getDocs;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
 
         loadTasks();
         renderHistory();
