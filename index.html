@@ -516,14 +516,15 @@
                         // 👇 追加（今の時刻を保存）
                         task.completedAt = new Date().toISOString();
 
-                        // 👇 historyへ移動
-                        history.push(task);
-
                         // 👇 tasksから削除
                         tasks.splice(index, 1);
 
-                        localStorage.setItem("tasks", JSON.stringify(tasks));
-                        localStorage.setItem("history", JSON.stringify(history));
+                        await window.addDoc(
+                            window.collection(window.db, "history"),
+                            task
+                        );
+
+                        await loadHistory();
 
                         alert("到着成功！");
                     } else {
@@ -539,10 +540,10 @@
             );
         }
 
-        function autoCheckTasks() {
+        async function autoCheckTasks() {
             const now = new Date();
 
-            tasks.forEach((task, index) => {
+            tasks.forEach(async (task, index) => {
 
                 // すでに完了 or 罰金済みならスキップ
                 if (task.completed || task.penalized) return;
@@ -550,12 +551,12 @@
                 const deadline = new Date(new Date(task.targetDateTime).getTime() + 10 * 60 * 1000);
 
                 if (now > deadline) {
-                    applyPenalty(task, index);
+                    await applyPenalty(task, index);
                 }
             });
         }
 
-        function applyPenalty(task, index) {
+        async function applyPenalty(task, index) {
             if (task.completed || task.penalized) return;
 
             let currentMoney = parseInt(localStorage.getItem("money") || "0");
@@ -572,20 +573,22 @@
 
             task.penalizedAt = new Date().toISOString();
 
-            // 👇 historyへ
-            history.push(task);
+            await window.addDoc(
+                window.collection(window.db, "history"),
+                task
+            );
 
-            // 👇 tasksから削除
+            await window.deleteDoc(
+                window.doc(window.db, "tasks", task.id)
+            );
+
             tasks.splice(index, 1);
 
-            localStorage.setItem("money", currentMoney);
-            localStorage.setItem("tasks", JSON.stringify(tasks));
-            localStorage.setItem("history", JSON.stringify(history));
+            await loadHistory();
 
             alert("罰金 +" + penalty + "円");
 
             renderTasks();
-            renderHistory();
 
             document.getElementById("unpaid").innerText =
                 "未払い：" + unpaidAmount + "円";
@@ -627,6 +630,25 @@
             });
 
             renderTasks();
+        }
+
+        async function loadHistory() {
+
+            const querySnapshot =
+                await window.getDocs(
+                    window.collection(window.db, "history")
+                );
+
+            history = [];
+
+            querySnapshot.forEach((doc) => {
+                const historyData = doc.data();
+
+                historyData.id = doc.id;
+
+                history.push(historyData);
+            });
+
         }
 
         function renderTasks() {
@@ -784,7 +806,7 @@
         window.doc = doc;
 
         loadTasks();
-        renderHistory();
+        loadHistory();
     </script>
 
     <script
